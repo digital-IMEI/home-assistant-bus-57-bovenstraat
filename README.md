@@ -4,7 +4,7 @@ Home Assistant custom integration for **Arriva bus 57 towards Maastricht**, trac
 
 ## Sensors
 
-- **Actuele vertraging** — realtime punctuality in minutes
+- **Actuele vertraging** — signed realtime punctuality as a Home Assistant duration sensor in seconds
 - **Laatst gepasseerde halte** — most recently departed/passed stop
 - **Geplande passage Bovenstraat** — scheduled passage time at Bovenstraat
 
@@ -28,6 +28,10 @@ The integration requires Home Assistant **2026.8.2 or newer**.
 - DRGL for the selected journey and human-readable stop names
 
 The integration is fixed to line 57 towards Maastricht and Bovenstraat, Noorbeek; there are no route settings or credentials.
+
+## Version 0.4.3
+
+- Exposes **Actuele vertraging** as a proper Home Assistant duration/measurement sensor in seconds, with zero decimal places.
 
 ## Version 0.4.2
 

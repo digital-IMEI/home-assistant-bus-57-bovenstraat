@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -28,10 +33,8 @@ class Bus57SensorDescription(SensorEntityDescription):
     attrs_fn: Callable[[BusSnapshot], dict[str, object]] | None = None
 
 
-def _delay_minutes(data: BusSnapshot) -> float | None:
-    if data.delay_seconds is None:
-        return None
-    return round(data.delay_seconds / 60, 1)
+def _delay_seconds(data: BusSnapshot) -> int | None:
+    return data.delay_seconds
 
 
 def _delay_attrs(data: BusSnapshot) -> dict[str, object]:
@@ -59,9 +62,12 @@ SENSORS: tuple[Bus57SensorDescription, ...] = (
         key="delay",
         translation_key="delay",
         icon="mdi:bus-clock",
-        native_unit_of_measurement=UnitOfTime.MINUTES,
-        suggested_display_precision=1,
-        value_fn=_delay_minutes,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        suggested_unit_of_measurement=UnitOfTime.SECONDS,
+        suggested_display_precision=0,
+        value_fn=_delay_seconds,
         attrs_fn=_delay_attrs,
     ),
     Bus57SensorDescription(

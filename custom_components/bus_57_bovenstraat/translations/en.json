@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bus 57 Bovenstraat",
+        "description": "Track Arriva line 57 towards Maastricht at Bovenstraat in Noorbeek. The correct line direction and timing point are discovered automatically."
+      }
+    },
+    "abort": {
+      "already_configured": "Bus 57 Bovenstraat is already configured."
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to OVapi. Try again later.",
+      "route_not_found": "Line 57 towards Maastricht or Bovenstraat in Noorbeek was not found in current public transport data.",
+      "unknown": "Unexpected error while checking public transport data."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "delay": {
+        "name": "Current delay"
+      },
+      "last_passed_stop": {
+        "name": "Last passed stop"
+      },
+      "scheduled_bovenstraat": {
+        "name": "Scheduled Bovenstraat passage"
+      }
+    }
+  }
+}

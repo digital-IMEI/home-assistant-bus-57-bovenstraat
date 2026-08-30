@@ -1,0 +1,14 @@
+{
+  "domain": "bus_57_bovenstraat",
+  "name": "Bus 57 Bovenstraat",
+  "codeowners": ["@digital-IMEI"],
+  "config_flow": true,
+  "documentation": "https://github.com/digital-IMEI/home-assistant-bus-57-bovenstraat",
+  "issue_tracker": "https://github.com/digital-IMEI/home-assistant-bus-57-bovenstraat/issues",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "requirements": [
+    "pyzmq==27.2.0"
+  ],
+  "version": "0.4.0"
+}

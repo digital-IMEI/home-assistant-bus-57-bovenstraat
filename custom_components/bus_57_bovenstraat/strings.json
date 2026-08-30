@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bus 57 Bovenstraat",
+        "description": "Volg Arriva lijn 57 richting Maastricht bij Bovenstraat in Noorbeek. De juiste lijnrichting en haltecode worden automatisch opgezocht."
+      }
+    },
+    "abort": {
+      "already_configured": "Bus 57 Bovenstraat is al geconfigureerd."
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met OVapi. Probeer het later opnieuw.",
+      "route_not_found": "Lijn 57 richting Maastricht of Bovenstraat in Noorbeek is niet gevonden in de actuele OV-data.",
+      "unknown": "Onverwachte fout tijdens het controleren van de OV-data."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "delay": {
+        "name": "Actuele vertraging"
+      },
+      "last_passed_stop": {
+        "name": "Laatst gepasseerde halte"
+      },
+      "scheduled_bovenstraat": {
+        "name": "Geplande passage Bovenstraat"
+      }
+    }
+  }
+}

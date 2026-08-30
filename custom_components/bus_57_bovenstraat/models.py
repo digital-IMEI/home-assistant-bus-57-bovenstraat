@@ -1,0 +1,384 @@
+"""Data models and parsing helpers for Bus 57 Bovenstraat."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime
+from html import unescape
+from io import BytesIO
+import re
+from xml.etree import ElementTree as ET
+from zoneinfo import ZoneInfo
+
+AMSTERDAM = ZoneInfo("Europe/Amsterdam")
+
+
+@dataclass(frozen=True, slots=True)
+class JourneySelection:
+    """A Maastricht-bound line 57 journey selected at Bovenstraat."""
+
+    journey_number: int
+    operating_day: str
+    scheduled_bovenstraat: datetime | None
+
+    @property
+    def key(self) -> str:
+        """Stable journey key for diagnostics and matching."""
+        return f"ARR:26057:{self.journey_number}/{self.operating_day.replace('-', '')}"
+
+
+@dataclass(frozen=True, slots=True)
+class Kv6Event:
+    """One BISON KV6 event."""
+
+    event_type: str
+    data_owner_code: str | None
+    line_planning_number: str | None
+    operating_day: str | None
+    journey_number: int | None
+    reinforcement_number: int | None
+    user_stop_code: str | None
+    passage_sequence_number: int | None
+    timestamp: datetime | None
+    source: str | None
+    punctuality: int | None
+    vehicle_number: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class BusSnapshot:
+    """Current state exposed by the integration."""
+
+    journey_number: int | None = None
+    operating_day: str | None = None
+    journey_key: str | None = None
+
+    line: str = "57"
+    destination: str = "Maastricht"
+
+    # True only after a trusted vehicle-origin KV6 event proves that the
+    # selected trip is physically being executed.
+    is_underway: bool = False
+
+    delay_seconds: int | None = None
+    delay_source_stop: str | None = None
+    delay_source_status: str | None = None
+    delay_observed_at: datetime | None = None
+
+    last_passed_stop: str | None = None
+    # National CHB StopPlaceCode, not the operator-domain KV6 UserStopCode.
+    last_passed_stop_code: str | None = None
+
+    target_scheduled_time: datetime | None = None
+    target_has_passed: bool = False
+
+    data_timestamp: datetime | None = None
+    realtime_connected: bool = False
+
+
+class ParseError(ValueError):
+    """Raised when public transport data cannot be interpreted."""
+
+
+_JOURNEY_BLOCK_RE = re.compile(
+    r'<a\s+href="/journey/ARR:26057:(?P<journey>\d+)/(?P<day>\d{8})/"[^>]*>'
+    r'(?P<body>.*?)</a>',
+    re.IGNORECASE | re.DOTALL,
+)
+_DESTINATION_RE = re.compile(
+    r'class="ott-destination"[^>]*>(?P<value>.*?)</div>',
+    re.IGNORECASE | re.DOTALL,
+)
+_LINE_RE = re.compile(
+    r'class="ott-linecode[^"]*"[^>]*>(?P<value>.*?)</div>',
+    re.IGNORECASE | re.DOTALL,
+)
+_TIME_RE = re.compile(
+    r'class="ott-departure-time[^"]*"[^>]*>(?P<value>.*?)</div>',
+    re.IGNORECASE | re.DOTALL,
+)
+_TAG_RE = re.compile(r"<[^>]+>")
+_CLOCK_RE = re.compile(r"\b(?P<hour>[01]?\d|2[0-3]):(?P<minute>[0-5]\d)\b")
+_TITLE_RE = re.compile(r"<title>(?P<title>.*?)</title>", re.IGNORECASE | re.DOTALL)
+# A valid public stop display name must contain a letter. This deliberately
+# rejects an accidentally requested numeric UserStopCode page such as
+# "66430270 - Vertrektijden".
+_STOP_NAME_HAS_LETTER_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]")
+_PSA_FILENAME_RE = re.compile(
+    r"PassengerStopAssignmentExportCHB_(?P<day>\d{4}-\d{2}-\d{2})\.xml\.gz",
+    re.IGNORECASE,
+)
+
+
+def _clean_html(value: str) -> str:
+    return " ".join(unescape(_TAG_RE.sub(" ", value)).split())
+
+
+def parse_drgl_departures(
+    html: str,
+    *,
+    destination: str = "Maastricht",
+    line: str = "57",
+) -> list[JourneySelection]:
+    """Parse Maastricht-bound line 57 journeys from Bovenstraat."""
+    result: list[JourneySelection] = []
+    wanted_destination = destination.casefold()
+
+    for match in _JOURNEY_BLOCK_RE.finditer(html):
+        body = match.group("body")
+        normalized_body = _clean_html(body).casefold()
+
+        if any(
+            marker in normalized_body
+            for marker in ("vertrokken", "vervallen", "cancelled", "canceled")
+        ):
+            continue
+
+        dest_match = _DESTINATION_RE.search(body)
+        line_match = _LINE_RE.search(body)
+        if not dest_match or not line_match:
+            continue
+
+        destination_value = _clean_html(dest_match.group("value"))
+        line_value = _clean_html(line_match.group("value"))
+        if wanted_destination not in destination_value.casefold() or line_value != line:
+            continue
+
+        journey_number = int(match.group("journey"))
+        day_text = match.group("day")
+        operating_day = f"{day_text[0:4]}-{day_text[4:6]}-{day_text[6:8]}"
+
+        scheduled: datetime | None = None
+        time_match = _TIME_RE.search(body)
+        if time_match:
+            display_time = _clean_html(time_match.group("value"))
+            clock_match = _CLOCK_RE.search(display_time)
+            if clock_match:
+                scheduled = datetime(
+                    int(day_text[0:4]),
+                    int(day_text[4:6]),
+                    int(day_text[6:8]),
+                    int(clock_match.group("hour")),
+                    int(clock_match.group("minute")),
+                    tzinfo=AMSTERDAM,
+                )
+
+        result.append(
+            JourneySelection(
+                journey_number=journey_number,
+                operating_day=operating_day,
+                scheduled_bovenstraat=scheduled,
+            )
+        )
+
+    return result
+
+
+def parse_drgl_stop_name(html: str) -> str | None:
+    """Extract a real human-readable stop name from a DRGL stop page."""
+    match = _TITLE_RE.search(html)
+    if not match:
+        return None
+
+    title = _clean_html(match.group("title"))
+    for suffix in (" - Vertrektijden", " – Vertrektijden", " ‐ Vertrektijden"):
+        if title.endswith(suffix):
+            title = title[: -len(suffix)]
+            break
+
+    title = title.strip(" ,;:-–—\t\r\n")
+    if not title or not _STOP_NAME_HAS_LETTER_RE.search(title):
+        return None
+
+    if title.casefold() in {"unknown", "onbekend"}:
+        return None
+
+    return title
+
+
+def select_latest_psa_filename(index_html: str, today: date) -> str | None:
+    """Select the newest PassengerStopAssignment export not newer than today."""
+    found: dict[date, str] = {}
+
+    for match in _PSA_FILENAME_RE.finditer(index_html):
+        try:
+            file_day = date.fromisoformat(match.group("day"))
+        except ValueError:
+            continue
+        found[file_day] = match.group(0)
+
+    if not found:
+        return None
+
+    eligible = [file_day for file_day in found if file_day <= today]
+    selected_day = max(eligible) if eligible else min(found)
+    return found[selected_day]
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _child_text(element: ET.Element, name: str) -> str | None:
+    wanted = name.casefold()
+    for child in element:
+        if _local_name(child.tag).casefold() == wanted:
+            text = child.text.strip() if child.text else ""
+            return text or None
+    return None
+
+
+def _as_int(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _as_date(value: str | None) -> date | None:
+    if not value:
+        return None
+
+    # PassengerStopAssignment uses an XML date-time value (for example
+    # ``2016-12-11 00:00:00``), although the field represents a calendar date.
+    # ``date.fromisoformat`` rejects that value when it is passed in full.  The
+    # previous parser consequently discarded every current Arriva assignment,
+    # which left the last-passed-stop sensor permanently empty.
+    try:
+        return date.fromisoformat(value.strip()[:10])
+    except ValueError:
+        return None
+
+
+def parse_passenger_stop_assignments(
+    xml_bytes: bytes,
+    *,
+    data_owner: str,
+    valid_on: date,
+) -> dict[str, str]:
+    """Map operator UserStopCode -> national CHB StopPlaceCode.
+
+    The current BISON PSA schema places ``stopplacecode`` directly under each
+    ``quay`` and the operator mappings under
+    ``quay/userstopcodes/userstopcodedata``. A ``stopplace`` can also contain
+    user-stop mappings, so both container types are supported.
+
+    Only mappings valid on ``valid_on`` are returned. If the export contains
+    successive assignments for the same UserStopCode, the assignment with the
+    latest valid-from date wins.
+    """
+    candidates: dict[str, tuple[date, str]] = {}
+
+    try:
+        iterator = ET.iterparse(BytesIO(xml_bytes), events=("end",))
+        for _, element in iterator:
+            kind = _local_name(element.tag).casefold()
+            if kind not in {"quay", "stopplace"}:
+                continue
+
+            stop_place_code = _child_text(element, "stopplacecode")
+            if not stop_place_code:
+                element.clear()
+                continue
+
+            for assignment in element.iter():
+                if _local_name(assignment.tag).casefold() != "userstopcodedata":
+                    continue
+
+                owner = _child_text(assignment, "dataownercode")
+                if owner != data_owner:
+                    continue
+
+                user_stop_code = _child_text(assignment, "userstopcode")
+                valid_from = _as_date(_child_text(assignment, "validfrom"))
+                valid_thru = _as_date(_child_text(assignment, "validthru"))
+
+                if not user_stop_code or valid_from is None:
+                    continue
+                if valid_from > valid_on:
+                    continue
+                if valid_thru is not None and valid_on > valid_thru:
+                    continue
+
+                existing = candidates.get(user_stop_code)
+                if existing is None or valid_from > existing[0]:
+                    candidates[user_stop_code] = (valid_from, stop_place_code)
+
+            element.clear()
+
+    except ET.ParseError as err:
+        raise ParseError(f"Invalid PassengerStopAssignment XML: {err}") from err
+
+    return {user_stop: value[1] for user_stop, value in candidates.items()}
+
+
+def parse_timestamp(value: str | None) -> datetime | None:
+    """Parse a BISON ISO timestamp, tolerating >6 fractional digits."""
+    if not value:
+        return None
+
+    text = value.strip()
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+
+    match = re.match(
+        r"^(?P<head>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
+        r"(?:\.(?P<fraction>\d+))?(?P<tz>Z|[+-]\d{2}:\d{2})?$",
+        text,
+    )
+    if match:
+        fraction = (match.group("fraction") or "")[:6]
+        timezone = match.group("tz") or ""
+        text = match.group("head")
+        if fraction:
+            text += f".{fraction}"
+        if timezone == "Z":
+            timezone = "+00:00"
+        text += timezone
+
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=AMSTERDAM)
+    return parsed
+
+
+def parse_kv6_xml(xml_bytes: bytes) -> list[Kv6Event]:
+    """Parse one decompressed BISON KV6 PUSH document."""
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as err:
+        raise ParseError(f"Invalid KV6 XML: {err}") from err
+
+    events: list[Kv6Event] = []
+    containers = [node for node in root.iter() if _local_name(node.tag) == "KV6posinfo"]
+
+    for container in containers:
+        for element in container:
+            event_type = _local_name(element.tag).upper()
+            source = _child_text(element, "source")
+            events.append(
+                Kv6Event(
+                    event_type=event_type,
+                    data_owner_code=_child_text(element, "dataownercode"),
+                    line_planning_number=_child_text(element, "lineplanningnumber"),
+                    operating_day=_child_text(element, "operatingday"),
+                    journey_number=_as_int(_child_text(element, "journeynumber")),
+                    reinforcement_number=_as_int(_child_text(element, "reinforcementnumber")),
+                    user_stop_code=_child_text(element, "userstopcode"),
+                    passage_sequence_number=_as_int(
+                        _child_text(element, "passagesequencenumber")
+                    ),
+                    timestamp=parse_timestamp(_child_text(element, "timestamp")),
+                    source=source.upper() if source else None,
+                    punctuality=_as_int(_child_text(element, "punctuality")),
+                    vehicle_number=_child_text(element, "vehiclenumber"),
+                )
+            )
+
+    return events

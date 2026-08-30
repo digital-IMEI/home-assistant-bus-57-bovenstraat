@@ -29,6 +29,10 @@ The integration requires Home Assistant **2026.8.2 or newer**.
 
 The integration is fixed to line 57 towards Maastricht and Bovenstraat, Noorbeek; there are no route settings or credentials.
 
+## Version 0.4.1
+
+- Adds explicit logo assets in addition to the integration icons for HACS and Home Assistant.
+
 ## Version 0.4.0
 
 - Fixes PassengerStopAssignment dates containing a time component. Previously this rejected all current Arriva stop mappings and left **Laatst gepasseerde halte** empty.

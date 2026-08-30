@@ -17,6 +17,8 @@ from .const import DESTINATION, DOMAIN, LINE_PUBLIC_NUMBER
 from .coordinator import Bus57Coordinator
 from .models import BusSnapshot
 
+NO_BUS_UNDERWAY = "Geen bus onderweg"
+
 
 @dataclass(frozen=True, kw_only=True)
 class Bus57SensorDescription(SensorEntityDescription):
@@ -66,7 +68,7 @@ SENSORS: tuple[Bus57SensorDescription, ...] = (
         key="last_passed_stop",
         translation_key="last_passed_stop",
         icon="mdi:bus-stop",
-        value_fn=lambda data: data.last_passed_stop,
+        value_fn=lambda data: data.last_passed_stop or NO_BUS_UNDERWAY,
     ),
     Bus57SensorDescription(
         key="scheduled_bovenstraat",
@@ -111,6 +113,8 @@ class Bus57Sensor(CoordinatorEntity[Bus57Coordinator], SensorEntity):
     @property
     def available(self) -> bool:
         """Expose values only while an actual bus is running."""
+        if self.entity_description.key == "last_passed_stop":
+            return super().available
         return super().available and self.coordinator.data.is_underway
 
     @property

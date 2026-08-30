@@ -36,10 +36,12 @@ from .realtime import Kv6Subscriber
 
 _LOGGER = logging.getLogger(__name__)
 
-# DELAY alone can exist before a vehicle is physically executing the trip. The
-# four state/position events below are therefore the only events that may make
-# the Home Assistant sensors available.
+# DELAY alone can exist before a vehicle is physically executing the trip.
 _UNDERWAY_EVENTS = {"ONROUTE", "ARRIVAL", "ONSTOP", "DEPARTURE"}
+# ARRIVAL and ONSTOP are also emitted while the vehicle is waiting at its
+# origin. Only a departure or an on-route position may start the exposed trip.
+# Once started, all four events may keep its delay current.
+_TRIP_START_EVENTS = {"ONROUTE", "DEPARTURE"}
 _DELAY_EVENTS = _UNDERWAY_EVENTS
 
 
@@ -395,6 +397,14 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
             and current.data_timestamp is not None
             and event.timestamp < current.data_timestamp
         ):
+            return
+
+        # Do not expose the artificial negative delay accumulated while the
+        # bus is waiting at its origin. ARRIVAL/ONSTOP only update an already
+        # running trip; DEPARTURE or ONROUTE is required to start one. Keeping
+        # ONROUTE as a start signal also restores a trip after an HA restart
+        # that occurs while the bus is already between stops.
+        if not current.is_underway and event.event_type not in _TRIP_START_EVENTS:
             return
 
         # The event has passed Source=VEHICLE + non-zero vehicle checks, so it is

@@ -29,6 +29,11 @@ The integration requires Home Assistant **2026.8.2 or newer**.
 
 The integration is fixed to line 57 towards Maastricht and Bovenstraat, Noorbeek; there are no route settings or credentials.
 
+## Version 0.4.2
+
+- Starts showing realtime delay only after a `DEPARTURE` or `ONROUTE` event, so waiting at the origin does not create an artificial early-running value.
+- Shows **Geen bus onderweg** for **Laatst gepasseerde halte** instead of `unknown` or `unavailable` outside an active trip.
+
 ## Version 0.4.1
 
 - Adds explicit logo assets in addition to the integration icons for HACS and Home Assistant.

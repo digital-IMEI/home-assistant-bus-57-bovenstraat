@@ -44,4 +44,4 @@ RECENT_KV6_EVENTS = 300
 # also a useful final sanity guard after filtering server-generated KV6 data.
 MAX_EARLY_SECONDS = 10 * 60
 
-USER_AGENT = "HomeAssistant-Bus57Bovenstraat/0.4.1"
+USER_AGENT = "HomeAssistant-Bus57Bovenstraat/0.4.2"

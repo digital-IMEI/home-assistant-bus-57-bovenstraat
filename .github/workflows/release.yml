@@ -35,3 +35,11 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --generate-notes
+
+          # HACS can cache the repository response just before the release is
+          # published. A post-release commit changes the repository ETag so its
+          # next "Update information" request also discovers this release.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "Refresh HACS metadata for $VERSION [skip ci]"
+          git push

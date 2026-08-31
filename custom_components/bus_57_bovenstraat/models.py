@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from html import unescape
 from io import BytesIO
-import re
 from xml.etree import ElementTree as ET
 from zoneinfo import ZoneInfo
 
@@ -20,6 +20,7 @@ class JourneySelection:
     journey_number: int
     operating_day: str
     scheduled_bovenstraat: datetime | None
+    cancelled: bool = False
 
     @property
     def key(self) -> str:
@@ -43,6 +44,7 @@ class Kv6Event:
     source: str | None
     punctuality: int | None
     vehicle_number: str | None
+    received_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +57,9 @@ class BusSnapshot:
 
     line: str = "57"
     destination: str = "Maastricht"
+
+    runtime_active: bool = False
+    inactive_reason: str | None = None
 
     # True only after a trusted vehicle-origin KV6 event proves that the
     # selected trip is physically being executed.
@@ -69,11 +74,24 @@ class BusSnapshot:
     # National CHB StopPlaceCode, not the operator-domain KV6 UserStopCode.
     last_passed_stop_code: str | None = None
 
+    # ARRIVAL/ONSTOP means the vehicle is currently standing at this stop.
+    # DEPARTURE/ONROUTE clears this position and advances last_passed_stop.
+    current_stop: str | None = None
+    current_stop_code: str | None = None
+
     target_scheduled_time: datetime | None = None
     target_has_passed: bool = False
 
+    # The source timestamp is useful for ordering and diagnostics; freshness is
+    # based on our own receipt time so a skewed vehicle clock cannot keep a bus
+    # active indefinitely.
     data_timestamp: datetime | None = None
+    last_received_at: datetime | None = None
+    last_event_type: str | None = None
+    vehicle_number: str | None = None
     realtime_connected: bool = False
+    realtime_stale: bool = False
+    last_journey_cancelled: bool = False
 
 
 class ParseError(ValueError):
@@ -81,20 +99,24 @@ class ParseError(ValueError):
 
 
 _JOURNEY_BLOCK_RE = re.compile(
-    r'<a\s+href="/journey/ARR:26057:(?P<journey>\d+)/(?P<day>\d{8})/"[^>]*>'
-    r'(?P<body>.*?)</a>',
+    r"<a\b(?=[^>]*\bhref=[\"']/journey/ARR:26057:"
+    r"(?P<journey>\d+)/(?P<day>\d{8})/[\"'])[^>]*>"
+    r"(?P<body>.*?)</a>",
     re.IGNORECASE | re.DOTALL,
 )
 _DESTINATION_RE = re.compile(
-    r'class="ott-destination"[^>]*>(?P<value>.*?)</div>',
+    r"class=[\"'][^\"']*\bott-destination\b[^\"']*[\"'][^>]*>"
+    r"(?P<value>.*?)</div>",
     re.IGNORECASE | re.DOTALL,
 )
 _LINE_RE = re.compile(
-    r'class="ott-linecode[^"]*"[^>]*>(?P<value>.*?)</div>',
+    r"class=[\"'][^\"']*\bott-linecode\b[^\"']*[\"'][^>]*>"
+    r"(?P<value>.*?)</div>",
     re.IGNORECASE | re.DOTALL,
 )
 _TIME_RE = re.compile(
-    r'class="ott-departure-time[^"]*"[^>]*>(?P<value>.*?)</div>',
+    r"class=[\"'][^\"']*\bott-departure-time\b[^\"']*[\"'][^>]*>"
+    r"(?P<value>.*?)</div>",
     re.IGNORECASE | re.DOTALL,
 )
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -126,13 +148,17 @@ def parse_drgl_departures(
 
     for match in _JOURNEY_BLOCK_RE.finditer(html):
         body = match.group("body")
+        block = match.group(0)
         normalized_body = _clean_html(body).casefold()
+        raw_block = block.casefold()
 
-        if any(
-            marker in normalized_body
-            for marker in ("vertrokken", "vervallen", "cancelled", "canceled")
-        ):
+        if "vertrokken" in normalized_body:
             continue
+
+        cancelled = any(
+            marker in normalized_body or marker in raw_block
+            for marker in ("vervallen", "cancelled", "canceled")
+        )
 
         dest_match = _DESTINATION_RE.search(body)
         line_match = _LINE_RE.search(body)
@@ -168,9 +194,17 @@ def parse_drgl_departures(
                 journey_number=journey_number,
                 operating_day=operating_day,
                 scheduled_bovenstraat=scheduled,
+                cancelled=cancelled,
             )
         )
 
+    result.sort(
+        key=lambda item: (
+            item.scheduled_bovenstraat.timestamp()
+            if item.scheduled_bovenstraat is not None
+            else float("inf")
+        )
+    )
     return result
 
 
@@ -348,37 +382,70 @@ def parse_timestamp(value: str | None) -> datetime | None:
     return parsed
 
 
-def parse_kv6_xml(xml_bytes: bytes) -> list[Kv6Event]:
-    """Parse one decompressed BISON KV6 PUSH document."""
-    try:
-        root = ET.fromstring(xml_bytes)
-    except ET.ParseError as err:
-        raise ParseError(f"Invalid KV6 XML: {err}") from err
+_KV6_EVENT_TYPES = frozenset(
+    {
+        "ARRIVAL",
+        "DELAY",
+        "DEPARTURE",
+        "END",
+        "INIT",
+        "OFFROUTE",
+        "ONROUTE",
+        "ONSTOP",
+    }
+)
 
+
+def parse_kv6_xml(
+    xml_bytes: bytes,
+    *,
+    data_owner: str | None = None,
+    line_planning_number: str | None = None,
+    received_at: datetime | None = None,
+) -> list[Kv6Event]:
+    """Parse one KV6 PUSH and only materialize events relevant to this tracker.
+
+    The NDOV topic contains every Arriva vehicle. Filtering while iterating the
+    XML avoids retaining a complete tree and constructing Python objects for
+    unrelated lines.
+    """
     events: list[Kv6Event] = []
-    containers = [node for node in root.iter() if _local_name(node.tag) == "KV6posinfo"]
 
-    for container in containers:
-        for element in container:
+    try:
+        for _, element in ET.iterparse(BytesIO(xml_bytes), events=("end",)):
             event_type = _local_name(element.tag).upper()
+            if event_type not in _KV6_EVENT_TYPES:
+                continue
+
+            owner = _child_text(element, "dataownercode")
+            line = _child_text(element, "lineplanningnumber")
+            if data_owner is not None and owner != data_owner:
+                element.clear()
+                continue
+            if line_planning_number is not None and line != line_planning_number:
+                element.clear()
+                continue
+
             source = _child_text(element, "source")
             events.append(
                 Kv6Event(
                     event_type=event_type,
-                    data_owner_code=_child_text(element, "dataownercode"),
-                    line_planning_number=_child_text(element, "lineplanningnumber"),
+                    data_owner_code=owner,
+                    line_planning_number=line,
                     operating_day=_child_text(element, "operatingday"),
                     journey_number=_as_int(_child_text(element, "journeynumber")),
                     reinforcement_number=_as_int(_child_text(element, "reinforcementnumber")),
                     user_stop_code=_child_text(element, "userstopcode"),
-                    passage_sequence_number=_as_int(
-                        _child_text(element, "passagesequencenumber")
-                    ),
+                    passage_sequence_number=_as_int(_child_text(element, "passagesequencenumber")),
                     timestamp=parse_timestamp(_child_text(element, "timestamp")),
                     source=source.upper() if source else None,
                     punctuality=_as_int(_child_text(element, "punctuality")),
                     vehicle_number=_child_text(element, "vehiclenumber"),
+                    received_at=received_at,
                 )
             )
+            element.clear()
+    except ET.ParseError as err:
+        raise ParseError(f"Invalid KV6 XML: {err}") from err
 
     return events

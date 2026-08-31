@@ -3,16 +3,40 @@
     "step": {
       "user": {
         "title": "Bus 57 Bovenstraat",
-        "description": "Track Arriva line 57 towards Maastricht at Bovenstraat in Noorbeek. The correct line direction and timing point are discovered automatically."
+        "description": "Track Arriva line 57 towards Maastricht at Bovenstraat in Noorbeek. All network processing remains off outside 06:00–10:00, while you are away or on a day off.",
+        "data": {
+          "presence_entity": "Presence",
+          "day_off_entity": "Day off"
+        },
+        "data_description": {
+          "presence_entity": "Select a device tracker or person whose state is home when you are at home.",
+          "day_off_entity": "Select a binary sensor that is on for a day off, leave or work-from-home day."
+        }
       }
     },
     "abort": {
       "already_configured": "Bus 57 Bovenstraat is already configured."
     },
     "error": {
-      "cannot_connect": "Cannot connect to OVapi. Try again later.",
+      "cannot_connect": "Cannot connect to the NDOV data. Try again later.",
       "route_not_found": "Line 57 towards Maastricht or Bovenstraat in Noorbeek was not found in current public transport data.",
       "unknown": "Unexpected error while checking public transport data."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bus 57 settings",
+        "description": "Change the entities that gate the lightweight morning runtime.",
+        "data": {
+          "presence_entity": "Presence",
+          "day_off_entity": "Day off"
+        },
+        "data_description": {
+          "presence_entity": "Select a device tracker or person whose state is home when you are at home.",
+          "day_off_entity": "Select a binary sensor that is on for a day off, leave or work-from-home day."
+        }
+      }
     }
   },
   "entity": {
@@ -21,10 +45,21 @@
         "name": "Current delay"
       },
       "last_passed_stop": {
-        "name": "Last passed stop"
+        "name": "Bus position"
+      },
+      "journey_status": {
+        "name": "Journey status",
+        "state": {
+          "no_bus": "No bus underway",
+          "waiting": "Waiting to depart",
+          "underway": "Underway",
+          "realtime_unavailable": "Realtime temporarily unavailable",
+          "cancelled": "Journey cancelled",
+          "previous_cancelled": "Previous journey cancelled"
+        }
       },
       "scheduled_bovenstraat": {
-        "name": "Scheduled Bovenstraat passage"
+        "name": "Next Bovenstraat passage"
       }
     }
   }

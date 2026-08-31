@@ -3,16 +3,40 @@
     "step": {
       "user": {
         "title": "Bus 57 Bovenstraat",
-        "description": "Volg Arriva lijn 57 richting Maastricht bij Bovenstraat in Noorbeek. De juiste lijnrichting en haltecode worden automatisch opgezocht."
+        "description": "Volg Arriva lijn 57 richting Maastricht bij Bovenstraat in Noorbeek. Buiten 06:00–10:00, wanneer je niet thuis bent of op een vrije dag blijft alle netwerkverwerking uitgeschakeld.",
+        "data": {
+          "presence_entity": "Aanwezigheid",
+          "day_off_entity": "Vrije dag"
+        },
+        "data_description": {
+          "presence_entity": "Kies een device tracker of persoon die de status home heeft wanneer je thuis bent.",
+          "day_off_entity": "Kies een binaire sensor die aan staat op een vrije dag, verlof- of thuiswerkdag."
+        }
       }
     },
     "abort": {
       "already_configured": "Bus 57 Bovenstraat is al geconfigureerd."
     },
     "error": {
-      "cannot_connect": "Kan geen verbinding maken met OVapi. Probeer het later opnieuw.",
+      "cannot_connect": "Kan geen verbinding maken met de NDOV-data. Probeer het later opnieuw.",
       "route_not_found": "Lijn 57 richting Maastricht of Bovenstraat in Noorbeek is niet gevonden in de actuele OV-data.",
       "unknown": "Onverwachte fout tijdens het controleren van de OV-data."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bus 57-instellingen",
+        "description": "Wijzig de sensoren waarmee de lichte ochtendruntime wordt in- en uitgeschakeld.",
+        "data": {
+          "presence_entity": "Aanwezigheid",
+          "day_off_entity": "Vrije dag"
+        },
+        "data_description": {
+          "presence_entity": "Kies een device tracker of persoon die de status home heeft wanneer je thuis bent.",
+          "day_off_entity": "Kies een binaire sensor die aan staat op een vrije dag, verlof- of thuiswerkdag."
+        }
+      }
     }
   },
   "entity": {
@@ -21,10 +45,21 @@
         "name": "Actuele vertraging"
       },
       "last_passed_stop": {
-        "name": "Laatst gepasseerde halte"
+        "name": "Buspositie"
+      },
+      "journey_status": {
+        "name": "Ritstatus",
+        "state": {
+          "no_bus": "Geen bus onderweg",
+          "waiting": "Wacht op vertrek",
+          "underway": "Onderweg",
+          "realtime_unavailable": "Realtime tijdelijk niet beschikbaar",
+          "cancelled": "Rit uitgevallen",
+          "previous_cancelled": "Vorige rit uitgevallen"
+        }
       },
       "scheduled_bovenstraat": {
-        "name": "Geplande passage Bovenstraat"
+        "name": "Volgende passage Bovenstraat"
       }
     }
   }

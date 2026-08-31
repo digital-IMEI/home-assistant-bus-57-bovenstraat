@@ -5,10 +5,49 @@ Home Assistant custom integration for **Arriva bus 57 towards Maastricht**, trac
 ## Sensors
 
 - **Actuele vertraging** — signed realtime punctuality as a Home Assistant duration sensor in seconds
-- **Laatst gepasseerde halte** — most recently departed/passed stop
-- **Geplande passage Bovenstraat** — scheduled passage time at Bovenstraat
+- **Buspositie** — the stop where the bus is standing, otherwise the last passed stop
+- **Ritstatus** — waiting, underway, no bus, cancelled journey or unavailable realtime data
+- **Volgende passage Bovenstraat** — next scheduled passage time at Bovenstraat
 
-Values are available only while a trusted vehicle-origin KV6 event confirms that the selected bus is underway. Trips reported more than ten minutes early are ignored.
+The next Bovenstraat time is visible as soon as a journey is found, including
+before departure. Realtime delay is exposed only after a trusted vehicle-origin
+`DEPARTURE` or `ONROUTE` event proves that the trip has started. Waiting at the
+origin therefore cannot create a false early-running value. Trips reported more
+than ten minutes early after departure are ignored.
+
+| Situation | Buspositie | Ritstatus | Delay |
+| --- | --- | --- | --- |
+| Bus is standing at a stop | Current stop | Underway (or waiting at the origin) | Available only after departure |
+| Bus is between stops | Last passed stop | Underway | Available |
+| Realtime data becomes stale | Last known position | Realtime temporarily unavailable | Unavailable |
+| Selected journey is cancelled or never appears | Last known position, otherwise no bus underway | Journey cancelled | Unavailable |
+| A following journey is already selected | Not yet departed | Previous journey cancelled | Unavailable |
+| No journey is available | No bus underway | No bus underway | Unavailable |
+
+## Lightweight morning runtime
+
+The integration runs only when all three conditions are true:
+
+| Condition | Required value |
+| --- | --- |
+| Local time | From 06:00 up to, but not including, 10:00 |
+| Selected presence entity | `home` |
+| Selected day-off binary sensor | `off` |
+
+Outside those conditions all sensors are unavailable and the integration closes
+its ZeroMQ connection, cancels HTTP work, stops XML parsing and disables its
+maintenance timer. Leaving home stops it immediately. Returning before 10:00
+starts it again.
+
+Both entities are selected privately in the Home Assistant setup screen and can
+be changed later with **Settings → Devices & services → Bus 57 Bovenstraat →
+Configure**. Their entity ids are not part of this public repository.
+
+While active, there is one push connection. A cheap local maintenance check runs
+once per minute. Journey discovery/revalidation uses one small HTTP request at
+most every five minutes while waiting for a trip; it stops during an active trip.
+The official stop mapping is downloaded at most once per active calendar day,
+and stop names are resolved only when needed.
 
 ## Installation with HACS
 
@@ -18,6 +57,11 @@ Values are available only while a trusted vehicle-origin KV6 event confirms that
 4. Install **Bus 57 Bovenstraat**.
 5. Restart Home Assistant.
 6. Open **Settings → Devices & services → Add integration** and add **Bus 57 Bovenstraat**.
+7. Select your presence entity and your day-off binary sensor.
+
+Existing installations upgrading from an earlier version must use **Configure**
+once to select those two entities. Until then the integration remains fully
+asleep and performs no network work.
 
 The integration requires Home Assistant **2026.8.2 or newer**.
 
@@ -28,6 +72,21 @@ The integration requires Home Assistant **2026.8.2 or newer**.
 - DRGL for the selected journey and human-readable stop names
 
 The integration is fixed to line 57 towards Maastricht and Bovenstraat, Noorbeek; there are no route settings or credentials.
+
+## Version 0.5.0
+
+- Adds the strict 06:00–10:00, home and workday runtime gate described above.
+- Makes both gate entities configurable in the Home Assistant UI.
+- Keeps **Volgende passage Bovenstraat** visible before the journey starts.
+- Starts delay reporting only on real trip progress and reports it as seconds.
+- Shows the current stop while the bus is standing there and otherwise keeps the last passed stop.
+- Adds **Ritstatus** and distinguishes a cancelled/no-show journey from a temporary realtime outage.
+- Retains the last known bus position during a realtime outage and reconnects automatically.
+- Filters unrelated KV6 events during streaming XML parsing to reduce memory and CPU use.
+- Reconnects a silent realtime stream and bases freshness on local receipt time.
+- Handles cancelled, disappeared, prematurely ended and no-show journeys without blocking the next candidate.
+- Retains working stop mappings during an outage and retries failed stop-name lookups.
+- Adds richer diagnostics and automated validation before publishing a release.
 
 ## Version 0.4.3
 

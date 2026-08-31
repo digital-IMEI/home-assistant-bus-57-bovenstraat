@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
 import gzip
+from datetime import date, datetime
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -15,6 +15,7 @@ from .const import (
     NDOV_HALTES_BASE_URL,
     PSA_INDEX_URL,
     REQUEST_TIMEOUT_SECONDS,
+    STOP_NAME_RETRY_INTERVAL,
     USER_AGENT,
 )
 from .models import (
@@ -42,7 +43,8 @@ class TransitHttpClient:
             "User-Agent": USER_AGENT,
             "Cache-Control": "no-cache",
         }
-        self._stop_name_cache: dict[str, str | None] = {}
+        self._stop_name_cache: dict[str, str] = {}
+        self._stop_name_retry_after: dict[str, datetime] = {}
         self._psa_mapping: dict[str, str] | None = None
         self._psa_loaded_for: date | None = None
         self._psa_filename: str | None = None
@@ -63,7 +65,10 @@ class TransitHttpClient:
         try:
             async with self._session.get(
                 url,
-                headers={**self._headers, "Accept": "application/gzip,application/octet-stream,*/*"},
+                headers={
+                    **self._headers,
+                    "Accept": "application/gzip,application/octet-stream,*/*",
+                },
                 timeout=self._timeout,
             ) as response:
                 response.raise_for_status()
@@ -131,6 +136,29 @@ class TransitHttpClient:
         """Return the currently loaded PSA export filename for diagnostics."""
         return self._psa_filename
 
+    @property
+    def psa_loaded_for(self) -> date | None:
+        """Return the service date represented by the cached PSA mapping."""
+        return self._psa_loaded_for
+
+    @property
+    def psa_is_stale(self) -> bool:
+        """Return whether a retained mapping predates the current service day."""
+        return (
+            self._psa_mapping is not None and self._psa_loaded_for != datetime.now(AMSTERDAM).date()
+        )
+
+    def get_cached_stop_name(self, stop_place_code: str) -> str | None:
+        """Return a previously resolved stop name without doing I/O."""
+        return self._stop_name_cache.get(stop_place_code)
+
+    def stop_name_resolution_due(self, stop_place_code: str) -> bool:
+        """Return whether an uncached stop name may be requested now."""
+        if stop_place_code in self._stop_name_cache:
+            return False
+        retry_after = self._stop_name_retry_after.get(stop_place_code)
+        return retry_after is None or datetime.now(AMSTERDAM) >= retry_after
+
     async def async_get_stop_name(self, stop_place_code: str) -> str | None:
         """Resolve a NATIONAL CHB StopPlaceCode to a human-readable name.
 
@@ -138,17 +166,25 @@ class TransitHttpClient:
         Those codes live in the operator's own domain and first have to be
         normalized through PassengerStopAssignment.
         """
-        if stop_place_code in self._stop_name_cache:
-            return self._stop_name_cache[stop_place_code]
+        if name := self._stop_name_cache.get(stop_place_code):
+            return name
+
+        now = datetime.now(AMSTERDAM)
+        if not self.stop_name_resolution_due(stop_place_code):
+            return None
 
         try:
             # PassengerStopAssignment already returns the complete national
             # identifier (for example ``NL:S:66420180``).
             html = await self._get_text_url(f"{DRGL_BASE_URL}/stop/{stop_place_code}")
         except TransitHttpError:
-            self._stop_name_cache[stop_place_code] = None
+            self._stop_name_retry_after[stop_place_code] = now + STOP_NAME_RETRY_INTERVAL
             return None
 
         name = parse_drgl_stop_name(html)
-        self._stop_name_cache[stop_place_code] = name
+        if name:
+            self._stop_name_cache[stop_place_code] = name
+            self._stop_name_retry_after.pop(stop_place_code, None)
+        else:
+            self._stop_name_retry_after[stop_place_code] = now + STOP_NAME_RETRY_INTERVAL
         return name

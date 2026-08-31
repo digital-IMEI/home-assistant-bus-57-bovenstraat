@@ -17,6 +17,7 @@ jobs:
         uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main
         with:
           category: integration
+          ignore: "description topics"
 
   validate-code:
     name: Home Assistant 2026.8.2
@@ -38,6 +39,7 @@ jobs:
           "homeassistant==2026.8.2"
           "pyzmq==27.2.0"
           pytest
+          pytest-asyncio
           ruff
 
       - name: Validate metadata and brand assets

@@ -435,6 +435,7 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
                     self.async_set_updated_data(
                         self._idle_snapshot(
                             last_journey_cancelled=True,
+                            cancelled_scheduled_time=scheduled,
                             preserve_position=True,
                         )
                     )
@@ -500,6 +501,7 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
         self._last_drgl_success_at = now
         self._expire_journey_filters(now)
         cancellation_detected = self.data.last_journey_cancelled
+        cancelled_scheduled_time = self.data.cancelled_scheduled_time
 
         if self._active is not None:
             refreshed = next(
@@ -519,6 +521,9 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
                 return
 
             cancellation_detected = True
+            cancelled_scheduled_time = (
+                self._active.scheduled_bovenstraat or cancelled_scheduled_time
+            )
             if refreshed is not None:
                 _LOGGER.info("Selected Bus 57 journey %s was cancelled", self._active.key)
             else:
@@ -535,6 +540,9 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
                 continue
             if candidate.cancelled:
                 cancellation_detected = True
+                cancelled_scheduled_time = (
+                    candidate.scheduled_bovenstraat or cancelled_scheduled_time
+                )
                 self._invalid_journeys[candidate.key] = now
                 continue
             chosen = candidate
@@ -545,6 +553,7 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
             self.async_set_updated_data(
                 self._idle_snapshot(
                     last_journey_cancelled=cancellation_detected,
+                    cancelled_scheduled_time=cancelled_scheduled_time,
                     preserve_position=cancellation_detected,
                 )
             )
@@ -566,6 +575,9 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
                 target_scheduled_time=chosen.scheduled_bovenstraat,
                 realtime_connected=self.realtime_connected,
                 last_journey_cancelled=cancellation_detected,
+                cancelled_scheduled_time=(
+                    cancelled_scheduled_time if cancellation_detected else None
+                ),
             )
         )
         _LOGGER.info("Tracking Bus 57 journey %s", chosen.key)
@@ -671,6 +683,9 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
         self.async_set_updated_data(
             self._idle_snapshot(
                 last_journey_cancelled=ended_before_target,
+                cancelled_scheduled_time=(
+                    active.scheduled_bovenstraat if ended_before_target else None
+                ),
                 preserve_position=ended_before_target,
             )
         )
@@ -709,6 +724,7 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
             last_event_type=event.event_type,
             vehicle_number=event.vehicle_number,
             last_journey_cancelled=(False if trip_started else current.last_journey_cancelled),
+            cancelled_scheduled_time=(None if trip_started else current.cancelled_scheduled_time),
         )
 
         stop_place_code = None
@@ -779,6 +795,7 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
                         current_stop=None,
                         current_stop_code=None,
                         last_journey_cancelled=False,
+                        cancelled_scheduled_time=None,
                     )
                 )
                 _LOGGER.info("Bus 57 journey %s passed Bovenstraat", active.key)
@@ -856,6 +873,7 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
         *,
         inactive_reason: str | None = None,
         last_journey_cancelled: bool = False,
+        cancelled_scheduled_time: datetime | None = None,
         preserve_position: bool = False,
     ) -> BusSnapshot:
         snapshot = BusSnapshot(
@@ -865,6 +883,7 @@ class Bus57Coordinator(DataUpdateCoordinator[BusSnapshot]):
             inactive_reason=inactive_reason,
             realtime_connected=self.realtime_connected,
             last_journey_cancelled=last_journey_cancelled,
+            cancelled_scheduled_time=(cancelled_scheduled_time if last_journey_cancelled else None),
         )
         if not preserve_position:
             return snapshot

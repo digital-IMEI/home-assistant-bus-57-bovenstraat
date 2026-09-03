@@ -1,5 +1,7 @@
 """Tests for lightweight sensor state selection."""
 
+from datetime import UTC, datetime
+
 from custom_components.bus_57_bovenstraat.const import (
     JOURNEY_STATUS_CANCELLED,
     JOURNEY_STATUS_NO_BUS,
@@ -12,6 +14,7 @@ from custom_components.bus_57_bovenstraat.models import BusSnapshot
 from custom_components.bus_57_bovenstraat.sensor import (
     NO_BUS_UNDERWAY,
     NOT_DEPARTED,
+    _status_attrs,
     journey_status,
     position_value,
 )
@@ -42,4 +45,19 @@ def test_journey_status_states() -> None:
     assert (
         journey_status(BusSnapshot(journey_number=456, last_journey_cancelled=True))
         == JOURNEY_STATUS_PREVIOUS_CANCELLED
+    )
+
+
+def test_journey_status_exposes_cancelled_scheduled_time() -> None:
+    cancelled_time = datetime(2026, 9, 3, 5, 41, tzinfo=UTC)
+
+    assert (
+        _status_attrs(
+            BusSnapshot(
+                journey_number=456,
+                last_journey_cancelled=True,
+                cancelled_scheduled_time=cancelled_time,
+            )
+        )["cancelled_scheduled_time"]
+        == "2026-09-03T05:41:00+00:00"
     )

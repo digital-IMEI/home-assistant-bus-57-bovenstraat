@@ -79,6 +79,7 @@ async def test_departure_advances_position_and_starts_delay() -> None:
         current_stop="Busstation, Gulpen",
         current_stop_code="NL:S:origin",
         last_journey_cancelled=True,
+        cancelled_scheduled_time=datetime(2026, 8, 31, 5, 41, tzinfo=UTC),
     )
 
     await coordinator._async_apply_event(_event("DEPARTURE", -72))
@@ -88,3 +89,4 @@ async def test_departure_advances_position_and_starts_delay() -> None:
     assert coordinator.data.is_underway
     assert coordinator.data.delay_seconds == -72
     assert not coordinator.data.last_journey_cancelled
+    assert coordinator.data.cancelled_scheduled_time is None

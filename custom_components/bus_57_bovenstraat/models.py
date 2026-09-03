@@ -92,6 +92,9 @@ class BusSnapshot:
     realtime_connected: bool = False
     realtime_stale: bool = False
     last_journey_cancelled: bool = False
+    # Scheduled Bovenstraat passage of the most recently cancelled journey.
+    # Kept separately because target_scheduled_time belongs to the next journey.
+    cancelled_scheduled_time: datetime | None = None
 
 
 class ParseError(ValueError):

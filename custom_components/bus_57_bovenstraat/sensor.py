@@ -141,6 +141,8 @@ def _status_attrs(data: BusSnapshot) -> dict[str, object]:
         attrs["journey_number"] = data.journey_number
     if data.journey_key:
         attrs["journey_key"] = data.journey_key
+    if data.cancelled_scheduled_time:
+        attrs["cancelled_scheduled_time"] = data.cancelled_scheduled_time.isoformat()
     return attrs
 
 

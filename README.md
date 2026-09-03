@@ -73,6 +73,11 @@ The integration requires Home Assistant **2026.8.2 or newer**.
 
 The integration is fixed to line 57 towards Maastricht and Bovenstraat, Noorbeek; there are no route settings or credentials.
 
+## Version 0.5.1
+
+- Exposes the scheduled Bovenstraat passage of the most recently cancelled journey as `cancelled_scheduled_time` on **Ritstatus**.
+- Keeps the cancelled journey time separate from the scheduled time of the following journey, so dashboards never have to infer it.
+
 ## Version 0.5.0
 
 - Adds the strict 06:00–10:00, home and workday runtime gate described above.

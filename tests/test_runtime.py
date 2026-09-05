@@ -28,6 +28,25 @@ def test_runtime_boundaries(hour: int, minute: int, expected: str | None) -> Non
 
 
 @pytest.mark.parametrize(
+    ("year", "month", "day", "expected"),
+    (
+        (2026, 9, 4, None),
+        (2026, 9, 5, "weekend"),
+        (2026, 9, 6, "weekend"),
+        (2026, 9, 7, None),
+    ),
+)
+def test_runtime_only_runs_monday_through_friday(
+    year: int,
+    month: int,
+    day: int,
+    expected: str | None,
+) -> None:
+    now = datetime(year, month, day, 7, 0, tzinfo=AMSTERDAM)
+    assert runtime_inactive_reason(now, "home", "off") == expected
+
+
+@pytest.mark.parametrize(
     ("presence", "day_off", "expected"),
     (
         ("not_home", "off", "not_home"),

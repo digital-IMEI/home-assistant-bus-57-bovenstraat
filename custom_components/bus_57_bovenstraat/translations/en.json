@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Bus 57 Bovenstraat",
-        "description": "Track Arriva line 57 towards Maastricht at Bovenstraat in Noorbeek. All network processing remains off outside 06:00–10:00, while you are away or on a day off.",
+        "description": "Track Arriva line 57 towards Maastricht at Bovenstraat in Noorbeek. All network processing remains off outside Monday through Friday from 06:00–10:00, while you are away or on a day off.",
         "data": {
           "presence_entity": "Presence",
           "day_off_entity": "Day off"

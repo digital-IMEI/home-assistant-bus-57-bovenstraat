@@ -18,6 +18,8 @@ def runtime_inactive_reason(
     local_clock = now.timetz().replace(tzinfo=None)
     if not ACTIVE_START_TIME <= local_clock < ACTIVE_END_TIME:
         return "outside_time_window"
+    if now.weekday() >= 5:
+        return "weekend"
     if presence_state != "home":
         return "not_home"
     if day_off_state == "on":

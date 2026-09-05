@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Bus 57 Bovenstraat",
-        "description": "Volg Arriva lijn 57 richting Maastricht bij Bovenstraat in Noorbeek. Buiten 06:00–10:00, wanneer je niet thuis bent of op een vrije dag blijft alle netwerkverwerking uitgeschakeld.",
+        "description": "Volg Arriva lijn 57 richting Maastricht bij Bovenstraat in Noorbeek. Buiten maandag t/m vrijdag van 06:00–10:00, wanneer je niet thuis bent of op een vrije dag blijft alle netwerkverwerking uitgeschakeld.",
         "data": {
           "presence_entity": "Aanwezigheid",
           "day_off_entity": "Vrije dag"

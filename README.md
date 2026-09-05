@@ -26,10 +26,11 @@ than ten minutes early after departure are ignored.
 
 ## Lightweight morning runtime
 
-The integration runs only when all three conditions are true:
+The integration runs only when all four conditions are true:
 
 | Condition | Required value |
 | --- | --- |
+| Local weekday | Monday through Friday |
 | Local time | From 06:00 up to, but not including, 10:00 |
 | Selected presence entity | `home` |
 | Selected day-off binary sensor | `off` |
@@ -72,6 +73,12 @@ The integration requires Home Assistant **2026.8.2 or newer**.
 - DRGL for the selected journey and human-readable stop names
 
 The integration is fixed to line 57 towards Maastricht and Bovenstraat, Noorbeek; there are no route settings or credentials.
+
+## Version 0.5.2
+
+- Restricts the lightweight runtime to Monday through Friday. On Saturday and
+  Sunday all sensors remain unavailable and no transport network processing is
+  started.
 
 ## Version 0.5.1
 
